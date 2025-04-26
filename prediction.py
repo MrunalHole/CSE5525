@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 
 class PersonalityDisorderPredictor:
-    def __init__(self, model_path, threshold=0.3):
+    def __init__(self, model_path, threshold=0.5):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = load_model(model_path)
         self.model.to(self.device)
@@ -26,7 +26,42 @@ class PersonalityDisorderPredictor:
             return_tensors='pt'
         )
         return encoding
-    
+    def predict(self, text):
+        """Predict personality disorder traits from a single conversation"""
+        # Tokenize and preprocess the input text
+        encoding = self.preprocess_text(text)
+        
+        # Move tensors to the same device as the model
+        input_ids = encoding['input_ids'].to(self.device)
+        attention_mask = encoding['attention_mask'].to(self.device)
+        
+        # Make prediction
+        with torch.no_grad():
+            outputs = self.model(input_ids=input_ids, 
+                            attention_mask=attention_mask)
+            logits = outputs.logits
+            probs = torch.sigmoid(logits).cpu().numpy()[0]
+        
+        # Apply threshold to get binary predictions
+        predictions = (probs > self.threshold).astype(int)
+        
+        # Prepare results dictionary
+        results = {
+            "probabilities": {
+                self.disorders[0]: float(probs[0]),
+                self.disorders[1]: float(probs[1]),
+                self.disorders[2]: float(probs[2])
+            },
+            "predictions": {
+                self.disorders[0]: bool(predictions[0]),
+                self.disorders[1]: bool(predictions[1]),
+                self.disorders[2]: bool(predictions[2])
+            },
+            "suggestion": self.generate_suggestion(predictions, probs)
+        }
+        
+        return results
+
     def predict_file(self, input_file, output_file):
         """Predict on an entire file and save results"""
         # Read input file
